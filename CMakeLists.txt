@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.1.0)
 project(bff)
 
-option(BFF_BUILD_CLI  "Build BFF command line" ON)
-option(BFF_BUILD_GUI  "Build BFF GUI"          ON)
+option(BFF_BUILD_CLI  "Build BFF command line" OFF)
+option(BFF_BUILD_GUI  "Build BFF GUI"          OFF)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,6 +18,10 @@ if(NOT BFF_USD_DIR STREQUAL "")
 	MESSAGE(STATUS "PXR_INCLUDE_DIRS: ${PXR_INCLUDE_DIRS}")
 	MESSAGE(STATUS ": ${PXR_LIBRARIES}")
 endif()
+
+include_directories("/home/casey/SuiteSparse/CHOLMOD/Include")
+include_directories("/home/casey/SuiteSparse/SuiteSparse_config")
+include_directories("/home/casey/openblas-built/include")
 
 # suitesparse
 # ------------------------------------------------------------------
@@ -86,3 +90,17 @@ if (BFF_BUILD_GUI)
 	target_include_directories(bff-viewer PUBLIC ${BFF_VIEWER_INCLUDE_DIRS})
 	target_link_libraries(bff-viewer bff glm nanogui ${NANOGUI_EXTRA_LIBS})
 endif()
+
+# Build the custom wrapper library
+
+set(CUSTOM_WRAPPER_SRCS
+  apps/custom-wrapper/src/CustomWrapper.cpp
+)
+
+add_executable(uv-unwrap ${CUSTOM_WRAPPER_SRCS})
+# target_include_directories(uv-unwrap PUBLIC "${BFF_INCLUDE_DIRS}")
+target_link_libraries(uv-unwrap bff ${SuiteSparse_LIBRARIES})
+# -fexceptions -sASSERTIONS -sNO_DISABLE_EXCEPTION_CATCHING
+# -s SAFE_HEAP=1 -s STACK_OVERFLOW_CHECK
+set_target_properties(uv-unwrap PROPERTIES LINK_FLAGS "-s ALLOW_MEMORY_GROWTH=1 -profiling -flto --bind -s EXPORT_NAME=\"UVUnwrap\" -s MODULARIZE=1 --cpu-baseline=avx -s NO_EXIT_RUNTIME=1 -s NO_FILESYSTEM=1")
+

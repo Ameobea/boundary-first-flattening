@@ -2,6 +2,9 @@
 #include "bff/project/BinPacking.h"
 #include <unordered_set>
 #include <queue>
+#include <cstdint>
+#include <map>
+#include <utility>
 #ifdef USE_USD
 	#include <pxr/usd/usd/prim.h>
 	#include <pxr/usd/usd/stage.h>
@@ -955,6 +958,82 @@ bool MeshIO::write(const std::string& fileName, Model& model,
 #endif
 	} else {
 		return false;
+	}
+}
+
+bool MeshIO::buildModelFromBuffers(const std::vector<Vector>& positions,
+								   const std::vector<int>& indices,
+								   Model& model,
+								   std::string& error)
+{
+	PolygonSoup soup;
+	soup.positions = positions;
+	soup.indices = indices;
+
+	// These are only needed when there are faces that have more than 3 vertices, which is
+	// never the case when using raw triangle indices/vertices.
+	std::vector<std::pair<int, int>> uncuttableEdges;
+
+	// build model
+	if (!buildModel(uncuttableEdges, soup, model, error)) {
+		return false;
+	}
+
+	return true;
+}
+
+void MeshIO::packAndGetBuffers(Model& model,
+							   const std::vector<uint8_t>& isSurfaceMappedToSphere,
+							   bool normalizeUvs, double scaling,
+							   std::vector<Vector>& outPositions,
+							   std::vector<Vector>& outUvs,
+							   std::vector<int>& outIndices)
+{
+	// Get the intermediate data from existing functions.
+	std::vector<Vector> originalUvIslandCenters, newUvIslandCenters;
+	std::vector<uint8_t> isUvIslandFlipped;
+	Vector modelMinBounds, modelMaxBounds;
+	packUvs(model, scaling, isSurfaceMappedToSphere, originalUvIslandCenters,
+			newUvIslandCenters, isUvIslandFlipped, modelMinBounds, modelMaxBounds);
+
+	std::vector<Vector> positions;
+	std::vector<Vector> uvs;
+	std::vector<int> vIndices;
+	std::vector<int> uvIndices;
+	std::vector<int> indicesOffset;
+	collectModelUvs(model, normalizeUvs, isSurfaceMappedToSphere,
+					originalUvIslandCenters, newUvIslandCenters,
+					isUvIslandFlipped, modelMinBounds, modelMaxBounds,
+					positions, uvs, vIndices, uvIndices, indicesOffset);
+
+  // `collectModelUvs` collects two sets of indices: one for vertex positions and one for UVs in
+	// order to support writing .obj files.
+	//
+	// .obj files are weird in that they have two sets of indices: one for vertices and one for UVs.
+  //
+  // This doesn't work for WebGL, so we have to normalize it to only have a single set of indices.
+	outPositions.clear();
+	outUvs.clear();
+	outIndices.clear();
+
+	std::map<std::pair<int, int>, int> vertexMap;
+	for (size_t i = 0; i < vIndices.size(); ++i) {
+		int vIdx = vIndices[i];
+		int uvIdx = uvIndices[i];
+		std::pair<int, int> key(vIdx, uvIdx);
+
+		auto it = vertexMap.find(key);
+		if (it == vertexMap.end()) {
+			int newIndex = (int)outPositions.size();
+			vertexMap[key] = newIndex;
+
+			outPositions.push_back(positions[vIdx]);
+			outUvs.push_back(uvs[uvIdx]);
+			outIndices.push_back(newIndex);
+
+		} else {
+			outIndices.push_back(it->second);
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 #include "bff/project/Generators.h"
 #include <queue>
 #include <unordered_set>
+#include <cstdint>
 
 namespace bff {
 

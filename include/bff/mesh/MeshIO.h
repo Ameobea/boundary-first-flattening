@@ -2,6 +2,7 @@
 
 #include <fstream>
 #include <sstream>
+#include <cstdint>
 #include "bff/mesh/PolygonSoup.h"
 #include "bff/mesh/MeshData.h"
 
@@ -26,10 +27,24 @@ public:
 	static bool buildModel(const std::vector<std::pair<int, int>>& uncuttableEdges,
 						   PolygonSoup& soup, Model& model, std::string& error);
 
+	// builds model from buffers
+	static bool buildModelFromBuffers(const std::vector<Vector>& positions,
+									  const std::vector<int>& indices,
+									  Model& model,
+									  std::string& error);
+
 	// writes model and its UVs to file
 	static bool write(const std::string& fileName, Model& model,
 					  const std::vector<uint8_t>& isSurfaceMappedToSphere,
 					  bool normalizeUvs, bool writeOnlyUvs, double scaling);
+
+	// packs UVs and returns buffers
+	static void packAndGetBuffers(Model& model,
+								  const std::vector<uint8_t>& isSurfaceMappedToSphere,
+								  bool normalizeUvs, double scaling,
+								  std::vector<Vector>& outPositions,
+								  std::vector<Vector>& outUvs,
+								  std::vector<int>& outIndices);
 
 	// bin packs model UV islands
 	static void packUvs(Model& model, double scaling,

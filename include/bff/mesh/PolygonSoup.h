@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <iostream>
 #include <cmath>
+#include <cstdint>
 #include "bff/linear-algebra/Vector.h"
 
 namespace bff {

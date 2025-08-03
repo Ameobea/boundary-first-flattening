@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include "bff/mesh/Mesh.h"
 
 namespace bff {

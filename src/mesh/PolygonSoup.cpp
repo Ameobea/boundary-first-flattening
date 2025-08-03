@@ -2,6 +2,7 @@
 #include <queue>
 #include <array>
 #include <unordered_set>
+#include <cstdint>
 
 namespace bff {
 
