@@ -987,12 +987,14 @@ void MeshIO::packAndGetBuffers(Model& model,
 							   bool normalizeUvs, double scaling,
 							   std::vector<Vector>& outPositions,
 							   std::vector<Vector>& outUvs,
-							   std::vector<int>& outIndices)
+							   std::vector<int>& outIndices,
+								 std::vector<Vector>& originalUvIslandCenters,
+								 std::vector<Vector>& newUvIslandCenters,
+								 std::vector<uint8_t>& isUvIslandFlipped,
+								 Vector& modelMinBounds,
+								 Vector& modelMaxBounds)
 {
 	// Get the intermediate data from existing functions.
-	std::vector<Vector> originalUvIslandCenters, newUvIslandCenters;
-	std::vector<uint8_t> isUvIslandFlipped;
-	Vector modelMinBounds, modelMaxBounds;
 	packUvs(model, scaling, isSurfaceMappedToSphere, originalUvIslandCenters,
 			newUvIslandCenters, isUvIslandFlipped, modelMinBounds, modelMaxBounds);
 

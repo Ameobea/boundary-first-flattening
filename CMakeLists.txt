@@ -4,7 +4,7 @@ project(bff)
 option(BFF_BUILD_CLI  "Build BFF command line" OFF)
 option(BFF_BUILD_GUI  "Build BFF GUI"          OFF)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # dependencies

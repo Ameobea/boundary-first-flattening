@@ -44,7 +44,12 @@ public:
 								  bool normalizeUvs, double scaling,
 								  std::vector<Vector>& outPositions,
 								  std::vector<Vector>& outUvs,
-								  std::vector<int>& outIndices);
+								  std::vector<int>& outIndices,
+								  std::vector<Vector>& originalUvIslandCenters,
+								  std::vector<Vector>& newUvIslandCenters,
+								  std::vector<uint8_t>& isUvIslandFlipped,
+									Vector& modelMinBounds,
+								  Vector& modelMaxBounds);
 
 	// bin packs model UV islands
 	static void packUvs(Model& model, double scaling,

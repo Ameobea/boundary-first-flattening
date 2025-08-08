@@ -1,10 +1,16 @@
 #include <emscripten/bind.h>
 #include <emscripten/val.h>
 
+#include <algorithm>
+#include <limits>
+#include <memory>
+#include <sstream>
+
 #include "bff/mesh/MeshIO.h"
 #include "bff/project/Bff.h"
 #include "bff/project/ConePlacement.h"
 #include "bff/project/Cutter.h"
+#include "bff/project/Distortion.h"
 #include "bff/project/Generators.h"
 #include "bff/project/HoleFiller.h"
 
@@ -19,21 +25,111 @@ struct UnwrapUVsOutput {
   std::vector<float> verts;
   std::vector<uint32_t> indices;
   std::string error;
+  Model model;
+  std::vector<uint8_t> isSurfaceMappedToSphere;
+  std::vector<Vector> originalUvIslandCenters;
+  std::vector<Vector> newUvIslandCenters;
+  std::vector<uint8_t> isUvIslandFlipped;
+  Vector modelMinBounds;
+  Vector modelMaxBounds;
 
-  explicit UnwrapUVsOutput(const std::string &errorMsg) {
-    uvs.reserve(0);
-    verts.reserve(0);
-    indices.reserve(0);
-    error = errorMsg;
-  }
+  explicit UnwrapUVsOutput(std::string errorMsg) : error(std::move(errorMsg)) {}
 
-  explicit UnwrapUVsOutput(const std::vector<float> &uvs,
-                           const std::vector<float> &verts,
-                           const std::vector<uint32_t> &indices) {
-    this->uvs = uvs;
-    this->verts = verts;
-    this->indices = indices;
-    error = "";
+  explicit UnwrapUVsOutput(std::vector<float> uvs, std::vector<float> verts,
+                           std::vector<uint32_t> indices, Model model,
+                           std::vector<Vector> originalUvIslandCenters,
+                           std::vector<Vector> newUvIslandCenters,
+                           std::vector<uint8_t> isUvIslandFlipped,
+                           Vector modelMinBounds, Vector modelMaxBounds,
+                           std::vector<uint8_t> isSurfaceMappedToSphere)
+      : uvs(std::move(uvs)), verts(std::move(verts)),
+        indices(std::move(indices)), error(""), model(std::move(model)),
+        isSurfaceMappedToSphere(std::move(isSurfaceMappedToSphere)),
+        originalUvIslandCenters(std::move(originalUvIslandCenters)),
+        newUvIslandCenters(std::move(newUvIslandCenters)),
+        isUvIslandFlipped(std::move(isUvIslandFlipped)),
+        modelMinBounds(modelMinBounds), modelMaxBounds(modelMaxBounds) {}
+
+  // Non-copyable
+  UnwrapUVsOutput(const UnwrapUVsOutput &) = delete;
+  UnwrapUVsOutput &operator=(const UnwrapUVsOutput &) = delete;
+
+  std::string getDistortionSvg() {
+    Distortion::computeAreaScaling(model);
+
+    std::stringstream svg;
+    svg << "<svg viewBox='-0.005 -0.005 1.01 1.01' "
+           "xmlns='http://www.w3.org/2000/svg'>";
+    // add a black border around the valid area (0,0) to (1,1)
+    svg << "<rect x='0' y='0' width='1' height='1' fill='none' "
+           "stroke='black' "
+           "stroke-width='0.001' />";
+    svg << "<g>";
+
+    for (int i = 0; i < model.size(); i++) {
+      double lengthRatio = std::sqrt(model[i].areaRatio());
+
+      Vector minExtent(modelMinBounds.x, modelMinBounds.y);
+      double dx = modelMaxBounds.x - minExtent.x;
+      double dy = modelMaxBounds.y - minExtent.y;
+      double extent = std::max(dx, dy);
+      minExtent.x -= (extent - dx) / 2.;
+      minExtent.y -= (extent - dy) / 2.;
+
+      // compute sphere radius if component has been mapped to a sphere
+      double sphereRadius = 1.;
+      if (isSurfaceMappedToSphere[i] == 1) {
+        for (WedgeCIter w = model[i].wedges().begin();
+             w != model[i].wedges().end(); w++) {
+          sphereRadius = std::max(w->uv.norm(), sphereRadius);
+        }
+      }
+
+      const std::vector<Face> &faces = model[i].faces;
+      for (FaceCIter f = faces.begin(); f != faces.end(); f++) {
+        if (f->fillsHole) {
+          continue;
+        }
+
+        Vector rgb = Distortion::color(f, i, false);
+
+        svg << "<polygon points='";
+        HalfEdgeCIter h = f->halfEdge();
+        do {
+          Vector uv = h->wedge()->uv;
+
+          if (isSurfaceMappedToSphere[i] == 1) {
+            uv /= sphereRadius;
+            uv.x = 0.5 + atan2(uv.z, uv.x) / (2 * M_PI);
+            uv.y = 0.5 - asin(uv.y) / M_PI;
+
+          } else {
+            uv *= model[i].radius * lengthRatio;
+          }
+
+          // apply scaling for this UV island in the same way as in packing
+          uv -= originalUvIslandCenters[i];
+          if (isUvIslandFlipped[i] == 1) {
+            uv = Vector(-uv.y, uv.x);
+          }
+          uv += newUvIslandCenters[i];
+          uv -= minExtent;
+          // if (normalizeUvs) {
+          uv /= extent;
+          // }
+
+          svg << uv.x << "," << uv.y << " ";
+          h = h->next();
+        } while (h != f->halfEdge());
+
+        svg << "' style='fill:rgb(" << int(rgb.x * 255) << ","
+            << int(rgb.y * 255) << "," << int(rgb.z * 255)
+            << ");stroke:black;stroke-width:0.001' />";
+      }
+    }
+
+    svg << "</g></svg>";
+    return svg.str();
   }
 };
 
@@ -103,6 +199,49 @@ bool loadModel(const std::vector<float> &positions,
   return true;
 }
 
+bool flattenMesh(Mesh &mesh, bool isSurfaceClosed, int nCones,
+                 bool flattenToDisk, bool mapToSphere, std::string &error) {
+  BFF bff(mesh);
+
+  if (nCones > 0) {
+    std::vector<VertexIter> cones;
+    DenseMatrix coneAngles(bff.data->iN);
+    int S = std::min(nCones, (int)mesh.vertices.size() - bff.data->bN);
+
+    if (ConePlacement::findConesAndPrescribeAngles(S, cones, coneAngles,
+                                                   bff.data, mesh) ==
+        ConePlacement::ErrorCode::ok) {
+      if (!isSurfaceClosed || cones.size() > 0) {
+        Cutter::cut(cones, mesh);
+        bff.flattenWithCones(coneAngles, true);
+      }
+    }
+  } else {
+    if (isSurfaceClosed) {
+      if (mapToSphere) {
+        bff.mapToSphere();
+
+      } else {
+        error = "Surface is closed. Either specify nCones or mapToSphere.";
+        return false;
+      }
+
+    } else {
+      if (flattenToDisk) {
+        bff.flattenToDisk();
+
+      } else {
+        DenseMatrix u(bff.data->bN);
+        bff.flatten(u, true);
+      }
+
+      mesh.projectUvsToPcaAxis();
+    }
+  }
+
+  return true;
+}
+
 // Also copied from `CommandLine.cpp`
 bool flatten(Model &model, const std::vector<bool> &isSurfaceClosed,
              const std::vector<int> &nCones, bool flattenToDisk,
@@ -110,59 +249,30 @@ bool flatten(Model &model, const std::vector<bool> &isSurfaceClosed,
   int nMeshes = model.size();
   for (int i = 0; i < nMeshes; i++) {
     Mesh &mesh = model[i];
-    BFF bff(mesh);
-
-    if (nCones[i] > 0) {
-      std::vector<VertexIter> cones;
-      DenseMatrix coneAngles(bff.data->iN);
-      int S = std::min(nCones[i], (int)mesh.vertices.size() - bff.data->bN);
-
-      if (ConePlacement::findConesAndPrescribeAngles(S, cones, coneAngles,
-                                                     bff.data, mesh) ==
-          ConePlacement::ErrorCode::ok) {
-        if (!isSurfaceClosed[i] || cones.size() > 0) {
-          Cutter::cut(cones, mesh);
-          bff.flattenWithCones(coneAngles, true);
-        }
+    bool ok = flattenMesh(mesh, isSurfaceClosed[i], nCones[i], flattenToDisk,
+                          mapToSphere, error);
+    if (!ok) {
+      if (error.empty()) {
+        error = "Failed to flatten mesh " + std::to_string(i) + ".";
       }
-
-    } else {
-      if (isSurfaceClosed[i]) {
-        if (mapToSphere) {
-          bff.mapToSphere();
-
-        } else {
-          error = "Surface is closed. Either specify nCones or mapToSphere.";
-          return false;
-        }
-
-      } else {
-        if (flattenToDisk) {
-          bff.flattenToDisk();
-
-        } else {
-          DenseMatrix u(bff.data->bN);
-          bff.flatten(u, true);
-        }
-
-        mesh.projectUvsToPcaAxis();
-      }
+      return false;
     }
   }
 
   return true;
 }
 
-UnwrapUVsOutput unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
-                          const std::vector<float> &targetMeshPositions,
-                          int nCones, bool flattenToDisk, bool mapToSphere) {
+std::unique_ptr<UnwrapUVsOutput>
+unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
+          const std::vector<float> &targetMeshPositions, int nCones,
+          bool flattenToDisk, bool mapToSphere) {
   std::string error;
   Model model;
   std::vector<bool> isSurfaceClosed;
   bool success = loadModel(targetMeshPositions, targetMeshIndices, model, error,
                            isSurfaceClosed);
   if (!success) {
-    return UnwrapUVsOutput(error);
+    return std::make_unique<UnwrapUVsOutput>(error);
   }
 
   // set nCones to 8 for closed surfaces
@@ -175,15 +285,20 @@ UnwrapUVsOutput unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
 
   if (!flatten(model, isSurfaceClosed, nConesPerMesh, flattenToDisk,
                mapToSphere, error)) {
-    return UnwrapUVsOutput(error);
+    return std::make_unique<UnwrapUVsOutput>(error);
   }
 
+  Vector modelMinBounds, modelMaxBounds;
+  std::vector<Vector> originalUvIslandCenters, newUvIslandCenters;
+  std::vector<uint8_t> isUvIslandFlipped;
   std::vector<Vector> outPositions;
   std::vector<Vector> outUvs;
   std::vector<int> outIndices;
   std::vector<uint8_t> isSurfaceMappedToSphere(model.size(), 0);
   MeshIO::packAndGetBuffers(model, isSurfaceMappedToSphere, true, 1.,
-                            outPositions, outUvs, outIndices);
+                            outPositions, outUvs, outIndices,
+                            originalUvIslandCenters, newUvIslandCenters,
+                            isUvIslandFlipped, modelMinBounds, modelMaxBounds);
 
   std::vector<float> uvs;
   uvs.reserve(outUvs.size() * 2);
@@ -202,7 +317,10 @@ UnwrapUVsOutput unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
 
   std::vector<uint32_t> indices(outIndices.begin(), outIndices.end());
 
-  return UnwrapUVsOutput(uvs, verts, indices);
+  return std::make_unique<UnwrapUVsOutput>(
+      uvs, verts, indices, std::move(model), std::move(originalUvIslandCenters),
+      std::move(newUvIslandCenters), std::move(isUvIslandFlipped),
+      modelMinBounds, modelMaxBounds, std::move(isSurfaceMappedToSphere));
 }
 
 template <typename T>
@@ -231,7 +349,8 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .property("uvs", &UnwrapUVsOutput::uvs)
       .property("verts", &UnwrapUVsOutput::verts)
       .property("indices", &UnwrapUVsOutput::indices)
-      .property("error", &UnwrapUVsOutput::error);
+      .property("error", &UnwrapUVsOutput::error)
+      .function("getDistortionSvg", &UnwrapUVsOutput::getDistortionSvg);
 
   register_vector_custom<float>("vector<float>");
   register_vector_custom<uint32_t>("vector<uint32_t>");

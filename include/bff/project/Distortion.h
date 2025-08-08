@@ -18,6 +18,10 @@ public:
 	// returns face color
 	static Vector color(FaceCIter f, int meshIndex, bool conformalColors);
 
+	static const std::vector<FaceData<double>>& getDistortionByMesh() {
+		return distortion;
+	}
+
 private:
 	// member
 	static std::vector<FaceData<double>> distortion;
