@@ -1,3 +1,10 @@
+setup:
+  #!/bin/bash
+
+  mkdir -p build
+  cd build
+  emcmake cmake -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DBFF_BUILD_GUI=OFF -DBFF_BUILD_CLI=OFF -DCMAKE_BUILD_TYPE=Release ..
+
 build:
   #!/bin/bash
 

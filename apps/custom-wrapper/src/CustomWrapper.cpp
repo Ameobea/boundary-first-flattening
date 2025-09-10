@@ -200,7 +200,8 @@ bool loadModel(const std::vector<float> &positions,
 }
 
 bool flattenMesh(Mesh &mesh, bool isSurfaceClosed, int nCones,
-                 bool flattenToDisk, bool mapToSphere, std::string &error) {
+                 bool flattenToDisk, bool mapToSphere, std::string &error,
+                 bool projectUVsToPCAAxis) {
   BFF bff(mesh);
 
   if (nCones > 0) {
@@ -235,7 +236,9 @@ bool flattenMesh(Mesh &mesh, bool isSurfaceClosed, int nCones,
         bff.flatten(u, true);
       }
 
-      mesh.projectUvsToPcaAxis();
+      if (projectUVsToPCAAxis) {
+        mesh.projectUvsToPcaAxis();
+      }
     }
   }
 
@@ -245,12 +248,12 @@ bool flattenMesh(Mesh &mesh, bool isSurfaceClosed, int nCones,
 // Also copied from `CommandLine.cpp`
 bool flatten(Model &model, const std::vector<bool> &isSurfaceClosed,
              const std::vector<int> &nCones, bool flattenToDisk,
-             bool mapToSphere, std::string &error) {
+             bool mapToSphere, std::string &error, bool projectUVsToPCAAxis) {
   int nMeshes = model.size();
   for (int i = 0; i < nMeshes; i++) {
     Mesh &mesh = model[i];
     bool ok = flattenMesh(mesh, isSurfaceClosed[i], nCones[i], flattenToDisk,
-                          mapToSphere, error);
+                          mapToSphere, error, projectUVsToPCAAxis);
     if (!ok) {
       if (error.empty()) {
         error = "Failed to flatten mesh " + std::to_string(i) + ".";
@@ -265,7 +268,7 @@ bool flatten(Model &model, const std::vector<bool> &isSurfaceClosed,
 std::unique_ptr<UnwrapUVsOutput>
 unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
           const std::vector<float> &targetMeshPositions, int nCones,
-          bool flattenToDisk, bool mapToSphere) {
+          bool flattenToDisk, bool mapToSphere, bool enableUVIslandRotation) {
   std::string error;
   Model model;
   std::vector<bool> isSurfaceClosed;
@@ -284,7 +287,7 @@ unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
   }
 
   if (!flatten(model, isSurfaceClosed, nConesPerMesh, flattenToDisk,
-               mapToSphere, error)) {
+               mapToSphere, error, enableUVIslandRotation)) {
     return std::make_unique<UnwrapUVsOutput>(error);
   }
 
@@ -298,7 +301,8 @@ unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
   MeshIO::packAndGetBuffers(model, isSurfaceMappedToSphere, true, 1.,
                             outPositions, outUvs, outIndices,
                             originalUvIslandCenters, newUvIslandCenters,
-                            isUvIslandFlipped, modelMinBounds, modelMaxBounds);
+                            isUvIslandFlipped, modelMinBounds, modelMaxBounds,
+                            enableUVIslandRotation);
 
   std::vector<float> uvs;
   uvs.reserve(outUvs.size() * 2);

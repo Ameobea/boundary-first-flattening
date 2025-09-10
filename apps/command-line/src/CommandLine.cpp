@@ -177,7 +177,7 @@ void writeModelUVs(const std::string& outputPath, Model& model,
 		}
 	}
 
-	if (!MeshIO::write(outputPath, model, isSurfaceMappedToSphere, normalizeUVs, writeOnlyUVs, scaling)) {
+	if (!MeshIO::write(outputPath, model, isSurfaceMappedToSphere, normalizeUVs, writeOnlyUVs, scaling, false)) {
 		std::cerr << "Unable to write file: " << outputPath << std::endl;
 		exit(EXIT_FAILURE);
 	}

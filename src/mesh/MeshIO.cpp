@@ -608,9 +608,11 @@ void MeshIO::packUvs(Model& model, double scaling,
 					 std::vector<Vector>& originalUvIslandCenters,
 					 std::vector<Vector>& newUvIslandCenters,
 					 std::vector<uint8_t>& isUvIslandFlipped,
-					 Vector& modelMinBounds, Vector& modelMaxBounds)
+					 Vector& modelMinBounds,
+					 Vector& modelMaxBounds,
+					 bool enableUVIslandRotation)
 {
-	if (model.size() > 1) {
+	if (enableUVIslandRotation && model.size() > 1) {
 		for (int i = 0; i < model.size(); i++) {
 			if (!isSurfaceMappedToSphere[i]) {
 				model[i].orientUvsToMinimizeBoundingBox(6);
@@ -930,14 +932,16 @@ bool MeshIO::writeUSD(const std::string& fileName, bool writeOnlyUvs,
 
 bool MeshIO::write(const std::string& fileName, Model& model,
 				   const std::vector<uint8_t>& isSurfaceMappedToSphere,
-				   bool normalizeUvs, bool writeOnlyUvs, double scaling)
+				   bool normalizeUvs, bool writeOnlyUvs, double scaling,
+				   bool enableUVIslandRotation)
 {
 	// pack UVs
 	std::vector<Vector> originalUvIslandCenters, newUvIslandCenters;
 	std::vector<uint8_t> isUvIslandFlipped;
 	Vector modelMinBounds, modelMaxBounds;
 	packUvs(model, scaling, isSurfaceMappedToSphere, originalUvIslandCenters,
-			newUvIslandCenters, isUvIslandFlipped, modelMinBounds, modelMaxBounds);
+			newUvIslandCenters, isUvIslandFlipped, modelMinBounds, modelMaxBounds,
+			enableUVIslandRotation);
 
 	// collect model UVs
 	std::vector<Vector> positions, uvs;
@@ -992,11 +996,13 @@ void MeshIO::packAndGetBuffers(Model& model,
 								 std::vector<Vector>& newUvIslandCenters,
 								 std::vector<uint8_t>& isUvIslandFlipped,
 								 Vector& modelMinBounds,
-								 Vector& modelMaxBounds)
+								 Vector& modelMaxBounds,
+								 bool enableUVIslandRotation)
 {
 	// Get the intermediate data from existing functions.
 	packUvs(model, scaling, isSurfaceMappedToSphere, originalUvIslandCenters,
-			newUvIslandCenters, isUvIslandFlipped, modelMinBounds, modelMaxBounds);
+			newUvIslandCenters, isUvIslandFlipped, modelMinBounds, modelMaxBounds,
+			enableUVIslandRotation);
 
 	std::vector<Vector> positions;
 	std::vector<Vector> uvs;

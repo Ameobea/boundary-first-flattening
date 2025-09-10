@@ -19,9 +19,30 @@ if(NOT BFF_USD_DIR STREQUAL "")
 	MESSAGE(STATUS ": ${PXR_LIBRARIES}")
 endif()
 
-include_directories("/home/casey/SuiteSparse/CHOLMOD/Include")
-include_directories("/home/casey/SuiteSparse/SuiteSparse_config")
-include_directories("/home/casey/openblas-built/include")
+set(USER_HOME "$ENV{HOME}")
+set(SUITESPARSE_ROOT "${USER_HOME}/SuiteSparse" CACHE PATH "Path to SuiteSparse root (contains CHOLMOD, SuiteSparse_config, etc.)")
+set(OPENBLAS_ROOT    "${USER_HOME}/openblas-built" CACHE PATH "Path to OpenBLAS install root (contains include/)" )
+
+set(_BFF_LOCAL_INC_DIRS)
+if(EXISTS "${SUITESPARSE_ROOT}/CHOLMOD/Include")
+	list(APPEND _BFF_LOCAL_INC_DIRS "${SUITESPARSE_ROOT}/CHOLMOD/Include")
+else()
+	message(STATUS "(bff) Optional CHOLMOD include dir not found: ${SUITESPARSE_ROOT}/CHOLMOD/Include")
+endif()
+if(EXISTS "${SUITESPARSE_ROOT}/SuiteSparse_config")
+	list(APPEND _BFF_LOCAL_INC_DIRS "${SUITESPARSE_ROOT}/SuiteSparse_config")
+else()
+	message(STATUS "(bff) Optional SuiteSparse_config include dir not found: ${SUITESPARSE_ROOT}/SuiteSparse_config")
+endif()
+if(EXISTS "${OPENBLAS_ROOT}/include")
+	list(APPEND _BFF_LOCAL_INC_DIRS "${OPENBLAS_ROOT}/include")
+else()
+	message(STATUS "(bff) Optional OpenBLAS include dir not found: ${OPENBLAS_ROOT}/include")
+endif()
+
+if(_BFF_LOCAL_INC_DIRS)
+	include_directories(${_BFF_LOCAL_INC_DIRS})
+endif()
 
 # suitesparse
 # ------------------------------------------------------------------
