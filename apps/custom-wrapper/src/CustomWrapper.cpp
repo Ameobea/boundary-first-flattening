@@ -2,6 +2,7 @@
 #include <emscripten/val.h>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <sstream>
@@ -24,6 +25,7 @@ struct UnwrapUVsOutput {
   std::vector<float> uvs;
   std::vector<float> verts;
   std::vector<uint32_t> indices;
+  std::vector<float> tangents; // xyz + handedness w per vertex (glTF convention)
   std::string error;
   Model model;
   std::vector<uint8_t> isSurfaceMappedToSphere;
@@ -265,6 +267,63 @@ bool flatten(Model &model, const std::vector<bool> &isSurfaceClosed,
   return true;
 }
 
+// Per-vertex tangents (xyz + handedness w) from the packed buffers via Lengyel's method.
+// Normals are recomputed here (area-weighted, matching three's `computeVertexNormals`) purely to
+// orthogonalize the tangent; the renderer keeps using its own normals for shading.
+static std::vector<float> computeTangents(const std::vector<float> &positions,
+                                          const std::vector<float> &uvs,
+                                          const std::vector<uint32_t> &indices) {
+  size_t nVerts = positions.size() / 3;
+  std::vector<float> tan(nVerts * 3, 0.f), bit(nVerts * 3, 0.f), nrm(nVerts * 3, 0.f);
+
+  for (size_t t = 0; t + 2 < indices.size(); t += 3) {
+    uint32_t tri[3] = {indices[t], indices[t + 1], indices[t + 2]};
+    uint32_t a = tri[0], b = tri[1], c = tri[2];
+    float ax = positions[a * 3], ay = positions[a * 3 + 1], az = positions[a * 3 + 2];
+    float e1x = positions[b * 3] - ax, e1y = positions[b * 3 + 1] - ay, e1z = positions[b * 3 + 2] - az;
+    float e2x = positions[c * 3] - ax, e2y = positions[c * 3 + 1] - ay, e2z = positions[c * 3 + 2] - az;
+    float fnx = e1y * e2z - e1z * e2y, fny = e1z * e2x - e1x * e2z, fnz = e1x * e2y - e1y * e2x;
+    float au = uvs[a * 2], av = uvs[a * 2 + 1];
+    float s1 = uvs[b * 2] - au, t1 = uvs[b * 2 + 1] - av;
+    float s2 = uvs[c * 2] - au, t2 = uvs[c * 2 + 1] - av;
+    float d = s1 * t2 - s2 * t1;
+    float r = std::abs(d) < 1e-12f ? 0.f : 1.f / d;
+    float tx = (e1x * t2 - e2x * t1) * r, ty = (e1y * t2 - e2y * t1) * r, tz = (e1z * t2 - e2z * t1) * r;
+    float bx = (e2x * s1 - e1x * s2) * r, by = (e2y * s1 - e1y * s2) * r, bz = (e2z * s1 - e1z * s2) * r;
+    for (int k = 0; k < 3; k++) {
+      uint32_t i = tri[k];
+      tan[i * 3] += tx; tan[i * 3 + 1] += ty; tan[i * 3 + 2] += tz;
+      bit[i * 3] += bx; bit[i * 3 + 1] += by; bit[i * 3 + 2] += bz;
+      nrm[i * 3] += fnx; nrm[i * 3 + 1] += fny; nrm[i * 3 + 2] += fnz;
+    }
+  }
+
+  std::vector<float> out(nVerts * 4);
+  for (size_t i = 0; i < nVerts; i++) {
+    float nx = nrm[i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2];
+    float nl = std::sqrt(nx * nx + ny * ny + nz * nz);
+    if (nl > 1e-20f) { nx /= nl; ny /= nl; nz /= nl; }
+    float tx = tan[i * 3], ty = tan[i * 3 + 1], tz = tan[i * 3 + 2];
+    float nd = nx * tx + ny * ty + nz * tz;
+    tx -= nx * nd; ty -= ny * nd; tz -= nz * nd; // Gram-Schmidt against the unit normal
+    float tl = std::sqrt(tx * tx + ty * ty + tz * tz);
+    if (tl < 1e-8f) {
+      // Under-constrained UVs (seam/degenerate triangle): arbitrary tangent perpendicular to N.
+      int axis = (std::abs(nx) <= std::abs(ny) && std::abs(nx) <= std::abs(nz)) ? 0
+                 : (std::abs(ny) <= std::abs(nz) ? 1 : 2);
+      float ux = axis == 0 ? 1.f : 0.f, uy = axis == 1 ? 1.f : 0.f, uz = axis == 2 ? 1.f : 0.f;
+      tx = ny * uz - nz * uy; ty = nz * ux - nx * uz; tz = nx * uy - ny * ux;
+      tl = std::sqrt(tx * tx + ty * ty + tz * tz);
+    }
+    float inv = tl > 0.f ? 1.f / tl : 0.f;
+    tx *= inv; ty *= inv; tz *= inv;
+    float cx = ny * tz - nz * ty, cy = nz * tx - nx * tz, cz = nx * ty - ny * tx;
+    float w = (cx * bit[i * 3] + cy * bit[i * 3 + 1] + cz * bit[i * 3 + 2]) < 0.f ? -1.f : 1.f;
+    out[i * 4] = tx; out[i * 4 + 1] = ty; out[i * 4 + 2] = tz; out[i * 4 + 3] = w;
+  }
+  return out;
+}
+
 std::unique_ptr<UnwrapUVsOutput>
 unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
           const std::vector<float> &targetMeshPositions, int nCones,
@@ -321,10 +380,12 @@ unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
 
   std::vector<uint32_t> indices(outIndices.begin(), outIndices.end());
 
-  return std::make_unique<UnwrapUVsOutput>(
+  auto output = std::make_unique<UnwrapUVsOutput>(
       uvs, verts, indices, std::move(model), std::move(originalUvIslandCenters),
       std::move(newUvIslandCenters), std::move(isUvIslandFlipped),
       modelMinBounds, modelMaxBounds, std::move(isSurfaceMappedToSphere));
+  output->tangents = computeTangents(output->verts, output->uvs, output->indices);
+  return output;
 }
 
 template <typename T>
@@ -353,6 +414,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .property("uvs", &UnwrapUVsOutput::uvs)
       .property("verts", &UnwrapUVsOutput::verts)
       .property("indices", &UnwrapUVsOutput::indices)
+      .property("tangents", &UnwrapUVsOutput::tangents)
       .property("error", &UnwrapUVsOutput::error)
       .function("getDistortionSvg", &UnwrapUVsOutput::getDistortionSvg);
 
