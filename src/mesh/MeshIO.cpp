@@ -610,9 +610,9 @@ void MeshIO::packUvs(Model& model, double scaling,
 					 std::vector<uint8_t>& isUvIslandFlipped,
 					 Vector& modelMinBounds,
 					 Vector& modelMaxBounds,
-					 bool enableUVIslandRotation)
+					 bool rotateIslands)
 {
-	if (enableUVIslandRotation && model.size() > 1) {
+	if (rotateIslands && model.size() > 1) {
 		for (int i = 0; i < model.size(); i++) {
 			if (!isSurfaceMappedToSphere[i]) {
 				model[i].orientUvsToMinimizeBoundingBox(6);
@@ -621,7 +621,8 @@ void MeshIO::packUvs(Model& model, double scaling,
 	}
 
 	BinPacking::pack(model, scaling, isSurfaceMappedToSphere, originalUvIslandCenters,
-					 newUvIslandCenters, isUvIslandFlipped, modelMinBounds, modelMaxBounds);
+					 newUvIslandCenters, isUvIslandFlipped, modelMinBounds, modelMaxBounds,
+					 rotateIslands);
 }
 
 void MeshIO::collectModelUvs(Model& model, bool normalizeUvs,
@@ -933,7 +934,7 @@ bool MeshIO::writeUSD(const std::string& fileName, bool writeOnlyUvs,
 bool MeshIO::write(const std::string& fileName, Model& model,
 				   const std::vector<uint8_t>& isSurfaceMappedToSphere,
 				   bool normalizeUvs, bool writeOnlyUvs, double scaling,
-				   bool enableUVIslandRotation)
+				   bool rotateIslands)
 {
 	// pack UVs
 	std::vector<Vector> originalUvIslandCenters, newUvIslandCenters;
@@ -941,7 +942,7 @@ bool MeshIO::write(const std::string& fileName, Model& model,
 	Vector modelMinBounds, modelMaxBounds;
 	packUvs(model, scaling, isSurfaceMappedToSphere, originalUvIslandCenters,
 			newUvIslandCenters, isUvIslandFlipped, modelMinBounds, modelMaxBounds,
-			enableUVIslandRotation);
+			rotateIslands);
 
 	// collect model UVs
 	std::vector<Vector> positions, uvs;
@@ -997,12 +998,12 @@ void MeshIO::packAndGetBuffers(Model& model,
 								 std::vector<uint8_t>& isUvIslandFlipped,
 								 Vector& modelMinBounds,
 								 Vector& modelMaxBounds,
-								 bool enableUVIslandRotation)
+								 bool rotateIslands)
 {
 	// Get the intermediate data from existing functions.
 	packUvs(model, scaling, isSurfaceMappedToSphere, originalUvIslandCenters,
 			newUvIslandCenters, isUvIslandFlipped, modelMinBounds, modelMaxBounds,
-			enableUVIslandRotation);
+			rotateIslands);
 
 	std::vector<Vector> positions;
 	std::vector<Vector> uvs;

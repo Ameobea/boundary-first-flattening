@@ -1,4 +1,5 @@
 #include "bff/mesh/MeshData.h"
+#include <cmath>
 #include <limits>
 
 namespace bff {
@@ -198,6 +199,65 @@ void Mesh::orientUvsToMinimizeBoundingBox(int nRotations)
 			Vector uvRotated(cosTheta*uv.x - sinTheta*uv.y,
 							 sinTheta*uv.x + cosTheta*uv.y);
 			w->uv = uvRotated;
+		}
+	}
+}
+
+void Mesh::alignUvsToAxes(const Vector& up, const Vector& fallback, int quarterTurns)
+{
+	const double minProjection = std::sin(15.0*M_PI/180.0);
+	double sumCos = 0.0, sumSin = 0.0;
+	for (FaceCIter f = faces.begin(); f != faces.end(); f++) {
+		if (!f->isReal() || f->fillsHole) continue;
+
+		// wedge of h sits at the vertex of h->prev()
+		HalfEdgeCIter h = f->halfEdge();
+		const Vector& p0 = h->vertex()->position;
+		const Vector& p1 = h->next()->vertex()->position;
+		const Vector& p2 = h->prev()->vertex()->position;
+		const Vector& uv0 = h->next()->wedge()->uv;
+		const Vector& uv1 = h->prev()->wedge()->uv;
+		const Vector& uv2 = h->wedge()->uv;
+
+		Vector e1 = p1 - p0, e2 = p2 - p0;
+		Vector n = cross(e1, e2);
+		double twiceArea = n.norm();
+		if (twiceArea < 1e-12) continue;
+		n /= twiceArea;
+
+		double s1 = uv1.x - uv0.x, t1 = uv1.y - uv0.y;
+		double s2 = uv2.x - uv0.x, t2 = uv2.y - uv0.y;
+		double det = s1*t2 - s2*t1;
+		if (std::abs(det) < 1e-12) continue;
+		Vector bitangent = (e2*s1 - e1*s2)/det;
+		bitangent -= n*dot(bitangent, n);
+		double bitangentLength = bitangent.norm();
+		if (bitangentLength < 1e-12) continue;
+		bitangent /= bitangentLength;
+
+		Vector target = up - n*dot(up, n);
+		double targetLength = target.norm();
+		if (targetLength < minProjection) {
+			target = fallback - n*dot(fallback, n);
+			targetLength = target.norm();
+			if (targetLength < 1e-8) continue;
+		}
+		target /= targetLength;
+
+		double weight = 0.5*twiceArea*targetLength;
+		sumCos += weight*dot(bitangent, target);
+		sumSin += weight*dot(cross(bitangent, target), n);
+	}
+
+	if (sumCos == 0.0 && sumSin == 0.0) return;
+
+	// rotating UVs by theta rotates each face's bitangent by -theta about its normal
+	double theta = -std::atan2(sumSin, sumCos) + quarterTurns*M_PI/2.0;
+	double cosTheta = std::cos(theta), sinTheta = std::sin(theta);
+	for (WedgeIter w = wedges().begin(); w != wedges().end(); w++) {
+		if (w->isReal()) {
+			Vector& uv = w->uv;
+			uv = Vector(cosTheta*uv.x - sinTheta*uv.y, sinTheta*uv.x + cosTheta*uv.y);
 		}
 	}
 }

@@ -13,7 +13,8 @@ public:
 					 std::vector<Vector>& originalUvIslandCenters,
 					 std::vector<Vector>& newUvIslandCenters,
 					 std::vector<uint8_t>& isUvIslandFlipped,
-					 Vector& modelMinBounds, Vector& modelMaxBounds);
+					 Vector& modelMinBounds, Vector& modelMaxBounds,
+					 bool rotateIslands);
 };
 
 } // namespace bff

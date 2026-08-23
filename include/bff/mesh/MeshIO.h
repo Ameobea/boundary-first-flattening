@@ -37,7 +37,7 @@ public:
 	static bool write(const std::string& fileName, Model& model,
 					  const std::vector<uint8_t>& isSurfaceMappedToSphere,
 					  bool normalizeUvs, bool writeOnlyUvs, double scaling,
-						bool enableUVIslandRotation);
+						bool rotateIslands);
 
 	// packs UVs and returns buffers
 	static void packAndGetBuffers(Model& model,
@@ -51,7 +51,7 @@ public:
 								  std::vector<uint8_t>& isUvIslandFlipped,
 									Vector& modelMinBounds,
 								  Vector& modelMaxBounds,
-									bool enableUVIslandRotation);
+									bool rotateIslands);
 
 	// bin packs model UV islands
 	static void packUvs(Model& model, double scaling,
@@ -61,7 +61,7 @@ public:
 						std::vector<uint8_t>& isUvIslandFlipped,
 						Vector& modelMinBounds,
 						Vector& modelMaxBounds,
-						bool enableUVIslandRotation
+						bool rotateIslands
 					);
 
 	// collects model positions and UVs

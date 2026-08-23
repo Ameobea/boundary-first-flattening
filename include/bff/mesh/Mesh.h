@@ -25,6 +25,10 @@ public:
 	// orients UVs to minimize bounding box size
 	void orientUvsToMinimizeBoundingBox(int nRotations);
 
+	// rotates UVs so +v (offset by quarterTurns) best aligns with up projected onto each face;
+	// faces nearly perpendicular to up use fallback instead
+	void alignUvsToAxes(const Vector& up, const Vector& fallback, int quarterTurns);
+
 	// computes the ratio of the surface areas of the mesh and flattened mesh
 	double areaRatio() const;
 

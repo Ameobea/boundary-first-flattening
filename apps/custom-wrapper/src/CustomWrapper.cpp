@@ -201,9 +201,14 @@ bool loadModel(const std::vector<float> &positions,
   return true;
 }
 
+struct UvAlignment {
+  Vector up, fallback;
+  int quarterTurns;
+};
+
 bool flattenMesh(Mesh &mesh, bool isSurfaceClosed, int nCones,
                  bool flattenToDisk, bool mapToSphere, std::string &error,
-                 bool projectUVsToPCAAxis) {
+                 const UvAlignment *align) {
   BFF bff(mesh);
 
   if (nCones > 0) {
@@ -217,6 +222,9 @@ bool flattenMesh(Mesh &mesh, bool isSurfaceClosed, int nCones,
       if (!isSurfaceClosed || cones.size() > 0) {
         Cutter::cut(cones, mesh);
         bff.flattenWithCones(coneAngles, true);
+        if (align) {
+          mesh.alignUvsToAxes(align->up, align->fallback, align->quarterTurns);
+        }
       }
     }
   } else {
@@ -238,7 +246,9 @@ bool flattenMesh(Mesh &mesh, bool isSurfaceClosed, int nCones,
         bff.flatten(u, true);
       }
 
-      if (projectUVsToPCAAxis) {
+      if (align) {
+        mesh.alignUvsToAxes(align->up, align->fallback, align->quarterTurns);
+      } else {
         mesh.projectUvsToPcaAxis();
       }
     }
@@ -250,12 +260,12 @@ bool flattenMesh(Mesh &mesh, bool isSurfaceClosed, int nCones,
 // Also copied from `CommandLine.cpp`
 bool flatten(Model &model, const std::vector<bool> &isSurfaceClosed,
              const std::vector<int> &nCones, bool flattenToDisk,
-             bool mapToSphere, std::string &error, bool projectUVsToPCAAxis) {
+             bool mapToSphere, std::string &error, const UvAlignment *align) {
   int nMeshes = model.size();
   for (int i = 0; i < nMeshes; i++) {
     Mesh &mesh = model[i];
     bool ok = flattenMesh(mesh, isSurfaceClosed[i], nCones[i], flattenToDisk,
-                          mapToSphere, error, projectUVsToPCAAxis);
+                          mapToSphere, error, align);
     if (!ok) {
       if (error.empty()) {
         error = "Failed to flatten mesh " + std::to_string(i) + ".";
@@ -327,7 +337,9 @@ static std::vector<float> computeTangents(const std::vector<float> &positions,
 std::unique_ptr<UnwrapUVsOutput>
 unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
           const std::vector<float> &targetMeshPositions, int nCones,
-          bool flattenToDisk, bool mapToSphere, bool enableUVIslandRotation) {
+          bool flattenToDisk, bool mapToSphere, bool alignUVs, float upX,
+          float upY, float upZ, float fallbackX, float fallbackY,
+          float fallbackZ, int quarterTurns) {
   std::string error;
   Model model;
   std::vector<bool> isSurfaceClosed;
@@ -345,8 +357,12 @@ unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
     }
   }
 
+  UvAlignment align{Vector(upX, upY, upZ),
+                    Vector(fallbackX, fallbackY, fallbackZ), quarterTurns};
+  align.up.normalize();
+  align.fallback.normalize();
   if (!flatten(model, isSurfaceClosed, nConesPerMesh, flattenToDisk,
-               mapToSphere, error, enableUVIslandRotation)) {
+               mapToSphere, error, alignUVs ? &align : nullptr)) {
     return std::make_unique<UnwrapUVsOutput>(error);
   }
 
@@ -361,7 +377,7 @@ unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
                             outPositions, outUvs, outIndices,
                             originalUvIslandCenters, newUvIslandCenters,
                             isUvIslandFlipped, modelMinBounds, modelMaxBounds,
-                            enableUVIslandRotation);
+                            !alignUVs);
 
   std::vector<float> uvs;
   uvs.reserve(outUvs.size() * 2);

@@ -195,7 +195,7 @@ void Viewer::initGui()
 
 			if (!MeshIO::write(file, model, isSurfaceMappedToSphere,
 							   exportNormalizedUVsCheckBox->checked(),
-							   !useVtFlagToStoreUVsCheckBox->checked(), 1.0, false)) {
+							   !useVtFlagToStoreUVsCheckBox->checked(), 1.0, true)) {
 				reportError("Unable to write file: " + file);
 			}
 

@@ -1,17 +1,77 @@
 #include "bff/project/BinPacking.h"
 #include "Rect.h"
 #include "SkylineBinPack.h"
+#include <algorithm>
 #include <limits>
 
 namespace bff {
 
 using namespace rbp;
 
+// Translation-only skyline bottom-left packer; rbp::SkylineBinPack always tries the 90° flip too.
+struct FixedOrientationSkyline {
+	struct Node { int x, y, width; };
+	int size;
+	std::vector<Node> nodes;
+
+	explicit FixedOrientationSkyline(int size_): size(size_), nodes{{0, 0, size_}} {}
+
+	bool fits(size_t i, int width, int height, int& y) const {
+		if (nodes[i].x + width > size) return false;
+		y = nodes[i].y;
+		for (int left = width; left > 0; i++) {
+			y = std::max(y, nodes[i].y);
+			if (y + height > size) return false;
+			left -= nodes[i].width;
+		}
+		return true;
+	}
+
+	Rect insert(int width, int height) {
+		Rect best{0, 0, 0, 0};
+		if (width <= 0 || height <= 0) return best;
+
+		int bestTop = std::numeric_limits<int>::max(), bestWidth = bestTop;
+		size_t bestIndex = 0;
+		for (size_t i = 0; i < nodes.size(); i++) {
+			int y;
+			if (!fits(i, width, height, y)) continue;
+			if (y + height < bestTop || (y + height == bestTop && nodes[i].width < bestWidth)) {
+				bestTop = y + height;
+				bestWidth = nodes[i].width;
+				bestIndex = i;
+				best = Rect{nodes[i].x, y, width, height};
+			}
+		}
+		if (best.height == 0) return best;
+
+		nodes.insert(nodes.begin() + bestIndex, Node{best.x, best.y + best.height, best.width});
+		for (size_t i = bestIndex + 1; i < nodes.size();) {
+			int shrink = nodes[i - 1].x + nodes[i - 1].width - nodes[i].x;
+			if (shrink <= 0) break;
+			nodes[i].x += shrink;
+			nodes[i].width -= shrink;
+			if (nodes[i].width > 0) break;
+			nodes.erase(nodes.begin() + i);
+		}
+		for (size_t i = 0; i + 1 < nodes.size();) {
+			if (nodes[i].y == nodes[i + 1].y) {
+				nodes[i].width += nodes[i + 1].width;
+				nodes.erase(nodes.begin() + i + 1);
+			} else {
+				i++;
+			}
+		}
+		return best;
+	}
+};
+
 bool attemptPacking(int boxLength, double unitsPerInt,
 					const std::vector<std::pair<RectSize, int>>& rectangleSizes,
 					std::vector<Vector>& newUvIslandCenters,
 					std::vector<uint8_t>& isUvIslandFlipped,
-					Vector& modelMinBounds, Vector& modelMaxBounds)
+					Vector& modelMinBounds, Vector& modelMaxBounds,
+					bool rotateIslands)
 {
 	// initialize packer
 	int n = (int)rectangleSizes.size();
@@ -20,13 +80,16 @@ bool attemptPacking(int boxLength, double unitsPerInt,
 	modelMaxBounds = Vector(std::numeric_limits<double>::lowest(),
 							std::numeric_limits<double>::lowest());
 	SkylineBinPack packer(boxLength, boxLength, false);
+	FixedOrientationSkyline fixedPacker(boxLength);
 
 	for (int i = 0; i < n; i++) {
 		RectSize rectSize = rectangleSizes[i].first;
 		int index = rectangleSizes[i].second;
 
-		Rect rect = packer.Insert(rectSize.width, rectSize.height,
-								  SkylineBinPack::LevelChoiceHeuristic::LevelBottomLeft);
+		Rect rect = rotateIslands
+			? packer.Insert(rectSize.width, rectSize.height,
+							SkylineBinPack::LevelChoiceHeuristic::LevelBottomLeft)
+			: fixedPacker.insert(rectSize.width, rectSize.height);
 
 		// check for failure
 		if (rect.width == 0 || rect.height == 0) {
@@ -55,7 +118,8 @@ void BinPacking::pack(const Model& model, double scaling,
 					  std::vector<Vector>& originalUvIslandCenters,
 					  std::vector<Vector>& newUvIslandCenters,
 					  std::vector<uint8_t>& isUvIslandFlipped,
-					  Vector& modelMinBounds, Vector& modelMaxBounds)
+					  Vector& modelMinBounds, Vector& modelMaxBounds,
+					  bool rotateIslands)
 {
 	// compute bounding boxes
 	int n = model.size();
@@ -140,7 +204,7 @@ void BinPacking::pack(const Model& model, double scaling,
 	do {
 		if (attemptPacking(maxBoxLength, unitsPerInt, rectangleSizes,
 						   newUvIslandCenters, isUvIslandFlipped,
-						   modelMinBounds, modelMaxBounds)) {
+						   modelMinBounds, modelMaxBounds, rotateIslands)) {
 			break;
 		}
 
@@ -160,7 +224,7 @@ void BinPacking::pack(const Model& model, double scaling,
 
 			if (attemptPacking(boxLength, unitsPerInt, rectangleSizes,
 							   newUvIslandCenters, isUvIslandFlipped,
-							   modelMinBounds, modelMaxBounds)) {
+							   modelMinBounds, modelMaxBounds, rotateIslands)) {
 				maxBoxLength = boxLength;
 
 			} else {
@@ -170,7 +234,7 @@ void BinPacking::pack(const Model& model, double scaling,
 
 		attemptPacking(maxBoxLength, unitsPerInt, rectangleSizes,
 					   newUvIslandCenters, isUvIslandFlipped,
-					   modelMinBounds, modelMaxBounds);
+					   modelMinBounds, modelMaxBounds, rotateIslands);
 	}
 
 	modelMinBounds *= unitsPerInt;
