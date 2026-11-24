@@ -974,6 +974,8 @@ bool MeshIO::buildModelFromBuffers(const std::vector<Vector>& positions,
 	PolygonSoup soup;
 	soup.positions = positions;
 	soup.indices = indices;
+	soup.sourceIndices.resize(positions.size());
+	for (int i = 0; i < (int)positions.size(); i++) soup.sourceIndices[i] = i;
 
 	// These are only needed when there are faces that have more than 3 vertices, which is
 	// never the case when using raw triangle indices/vertices.
@@ -983,6 +985,7 @@ bool MeshIO::buildModelFromBuffers(const std::vector<Vector>& positions,
 	if (!buildModel(uncuttableEdges, soup, model, error)) {
 		return false;
 	}
+	model.sourceIndices = soup.sourceIndices;
 
 	return true;
 }
@@ -993,6 +996,7 @@ void MeshIO::packAndGetBuffers(Model& model,
 							   std::vector<Vector>& outPositions,
 							   std::vector<Vector>& outUvs,
 							   std::vector<int>& outIndices,
+							   std::vector<int>& outSourceIndices,
 								 std::vector<Vector>& originalUvIslandCenters,
 								 std::vector<Vector>& newUvIslandCenters,
 								 std::vector<uint8_t>& isUvIslandFlipped,
@@ -1024,6 +1028,7 @@ void MeshIO::packAndGetBuffers(Model& model,
 	outPositions.clear();
 	outUvs.clear();
 	outIndices.clear();
+	outSourceIndices.clear();
 
 	std::map<std::pair<int, int>, int> vertexMap;
 	for (size_t i = 0; i < vIndices.size(); ++i) {
@@ -1037,6 +1042,7 @@ void MeshIO::packAndGetBuffers(Model& model,
 			vertexMap[key] = newIndex;
 
 			outPositions.push_back(positions[vIdx]);
+			outSourceIndices.push_back(model.sourceIndices[vIdx]);
 			outUvs.push_back(uvs[uvIdx]);
 			outIndices.push_back(newIndex);
 

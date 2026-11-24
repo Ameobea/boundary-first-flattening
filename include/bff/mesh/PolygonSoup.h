@@ -79,6 +79,7 @@ public:
 	// members
 	std::vector<Vector> positions;
 	std::vector<int> indices;
+	std::vector<int> sourceIndices; // caller's vertex index per position; left empty if untracked
 	VertexAdjacencyMaps vertexAdjacency; // build after filling positions and indices
 	EdgeFaceAdjacencyMap edgeFaceAdjacency; // build after constructing vertexAdjacency
 

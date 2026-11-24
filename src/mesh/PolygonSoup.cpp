@@ -255,6 +255,13 @@ bool PolygonSoup::removeIsolatedVertices()
 	}
 
 	if (hasIsolatedVertices) {
+		if (!sourceIndices.empty()) {
+			std::vector<int> sourceCopy(positionsCopy.size());
+			for (int i = 0; i < nVertices; i++) {
+				if (vertexIndexMap[i] != -1) sourceCopy[vertexIndexMap[i]] = sourceIndices[i];
+			}
+			sourceIndices = sourceCopy;
+		}
 		positions = positionsCopy;
 		indices = indicesCopy;
 		return true;
@@ -334,6 +341,7 @@ bool PolygonSoup::splitNonManifoldVertices()
 					int u = (int)positions.size();
 					Vector p = positions[v];
 					positions.emplace_back(p);
+					if (!sourceIndices.empty()) sourceIndices.emplace_back(sourceIndices[v]);
 
 					// record updated split vertex index
 					for (int k = 0; k < (int)componentFaces.size(); k++) {

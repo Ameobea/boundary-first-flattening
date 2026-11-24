@@ -46,6 +46,7 @@ public:
 								  std::vector<Vector>& outPositions,
 								  std::vector<Vector>& outUvs,
 								  std::vector<int>& outIndices,
+								  std::vector<int>& outSourceIndices,
 								  std::vector<Vector>& originalUvIslandCenters,
 								  std::vector<Vector>& newUvIslandCenters,
 								  std::vector<uint8_t>& isUvIslandFlipped,

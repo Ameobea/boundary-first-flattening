@@ -26,6 +26,7 @@ struct UnwrapUVsOutput {
   std::vector<float> verts;
   std::vector<uint32_t> indices;
   std::vector<float> tangents; // xyz + handedness w per vertex (glTF convention)
+  std::vector<uint32_t> srcIndices; // input vertex each output vertex is a copy of
   std::string error;
   Model model;
   std::vector<uint8_t> isSurfaceMappedToSphere;
@@ -372,9 +373,10 @@ unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
   std::vector<Vector> outPositions;
   std::vector<Vector> outUvs;
   std::vector<int> outIndices;
+  std::vector<int> outSourceIndices;
   std::vector<uint8_t> isSurfaceMappedToSphere(model.size(), 0);
   MeshIO::packAndGetBuffers(model, isSurfaceMappedToSphere, true, 1.,
-                            outPositions, outUvs, outIndices,
+                            outPositions, outUvs, outIndices, outSourceIndices,
                             originalUvIslandCenters, newUvIslandCenters,
                             isUvIslandFlipped, modelMinBounds, modelMaxBounds,
                             !alignUVs);
@@ -400,6 +402,7 @@ unwrapUVs(const std::vector<uint32_t> &targetMeshIndices,
       uvs, verts, indices, std::move(model), std::move(originalUvIslandCenters),
       std::move(newUvIslandCenters), std::move(isUvIslandFlipped),
       modelMinBounds, modelMaxBounds, std::move(isSurfaceMappedToSphere));
+  output->srcIndices.assign(outSourceIndices.begin(), outSourceIndices.end());
   output->tangents = computeTangents(output->verts, output->uvs, output->indices);
   return output;
 }
@@ -431,6 +434,7 @@ EMSCRIPTEN_BINDINGS(my_module) {
       .property("verts", &UnwrapUVsOutput::verts)
       .property("indices", &UnwrapUVsOutput::indices)
       .property("tangents", &UnwrapUVsOutput::tangents)
+      .property("srcIndices", &UnwrapUVsOutput::srcIndices)
       .property("error", &UnwrapUVsOutput::error)
       .function("getDistortionSvg", &UnwrapUVsOutput::getDistortionSvg);
 

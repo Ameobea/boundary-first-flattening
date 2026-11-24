@@ -80,12 +80,14 @@ public:
 		meshes.clear();
 		modelToMeshMap.clear();
 		meshToModelMap.clear();
+		sourceIndices.clear();
 	}
 
 	// members
 	std::vector<Mesh> meshes;
 	std::vector<std::pair<int, int>> modelToMeshMap;
 	std::vector<std::vector<int>> meshToModelMap;
+	std::vector<int> sourceIndices; // caller's vertex index per model vertex (buffer-built models)
 };
 
 } // namespace bff
